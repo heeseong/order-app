@@ -272,3 +272,401 @@
   - 재고 변경 시 즉시 반영
   - 대시보드 요약 정보 실시간 업데이트
   - 새 주문 접수 시 자동 업데이트 (폴링 또는 웹소켓) (선택사항)
+
+5. 백엔드 개발 사양
+
+5.1 데이터 모델
+
+5.1.1 Menus (메뉴)
+- id: 메뉴 고유 식별자 (Primary Key)
+- name: 커피 이름 (예: "아메리카노(ICE)", "카페라떼")
+- description: 메뉴 설명 (예: "에스프레소에 물을 넣어 만든 시원한 아이스 커피")
+- price: 가격 (정수, 원화 단위)
+- image: 이미지 URL 또는 이미지 경로
+- stock: 재고 수량 (정수)
+- created_at: 생성 일시
+- updated_at: 수정 일시
+
+5.1.2 Options (옵션)
+- id: 옵션 고유 식별자 (Primary Key)
+- name: 옵션 이름 (예: "샷 추가", "시럽 추가")
+- price: 옵션 가격 (정수, 원화 단위, 0 이상)
+- menu_id: 연결할 메뉴 ID (Foreign Key, Menus 테이블 참조)
+- created_at: 생성 일시
+- updated_at: 수정 일시
+
+5.1.3 Orders (주문)
+- id: 주문 고유 식별자 (Primary Key)
+- order_date: 주문 일시 (날짜 및 시간)
+- status: 주문 상태 (문자열)
+  - 'pending': 주문 접수 대기
+  - 'accepted': 주문 접수
+  - 'preparing': 제조 중
+  - 'completed': 제조 완료
+- total_price: 총 주문 금액 (정수, 원화 단위)
+- created_at: 생성 일시
+- updated_at: 수정 일시
+
+5.1.4 OrderItems (주문 항목)
+- id: 주문 항목 고유 식별자 (Primary Key)
+- order_id: 주문 ID (Foreign Key, Orders 테이블 참조)
+- menu_id: 메뉴 ID (Foreign Key, Menus 테이블 참조)
+- menu_name: 메뉴 이름 (주문 시점의 메뉴 이름 저장)
+- quantity: 수량 (정수)
+- unit_price: 단가 (정수, 주문 시점의 가격 저장)
+- options: 선택된 옵션 정보 (JSON 형태 또는 별도 테이블)
+  - 예: {"addShot": true, "addSyrup": false}
+- item_total_price: 항목별 총 가격 (단가 × 수량 + 옵션 가격)
+- created_at: 생성 일시
+
+5.2 데이터 스키마를 위한 사용자 흐름
+
+5.2.1 메뉴 조회 흐름
+① 프런트엔드에서 '주문하기' 메뉴를 클릭하면 API를 통해 데이터베이스에서 커피 메뉴 목록을 조회합니다.
+② Menus 테이블에서 모든 메뉴 정보(id, name, description, price, image)를 가져와 브라우저 화면에 표시합니다.
+③ Menus 테이블의 stock(재고 수량) 정보는 관리자 화면에만 표시합니다.
+④ 각 메뉴에 연결된 Options 정보도 함께 조회하여 옵션 선택 UI에 표시합니다.
+
+5.2.2 주문 생성 흐름
+① 사용자가 앱 화면에서 커피 메뉴를 선택하고 옵션을 선택한 후 장바구니에 담습니다.
+② 장바구니에서 '주문하기' 버튼을 클릭하면 주문 정보를 Orders 테이블에 저장합니다.
+③ Orders 테이블에 저장할 정보:
+   - order_date: 주문 일시 (현재 시간)
+   - status: 'accepted' (주문 접수 상태로 기본 설정)
+   - total_price: 장바구니의 모든 항목 총 금액
+④ OrderItems 테이블에 주문 내용을 저장합니다:
+   - 각 장바구니 항목마다 하나의 OrderItem 레코드 생성
+   - menu_id, menu_name, quantity, unit_price, options, item_total_price 저장
+⑤ 주문이 생성되면 해당 메뉴의 재고(stock)를 차감합니다:
+   - Menus 테이블에서 주문된 메뉴의 stock을 수량만큼 감소
+   - 재고가 부족한 경우 주문 실패 처리 (에러 응답)
+
+5.2.3 주문 현황 조회 흐름
+① 관리자 화면의 '주문 현황' 섹션에서 Orders 테이블의 정보를 조회합니다.
+② 주문의 기본 상태는 'accepted' (주문 접수)입니다.
+③ 각 주문에 대해 다음 정보를 표시:
+   - 주문 일시 (order_date)
+   - 주문 내용 (OrderItems에서 조회: 메뉴명, 수량, 옵션, 금액)
+   - 주문 상태 (status)
+   - 총 금액 (total_price)
+④ 주문 상태 변경:
+   - '제조 시작' 버튼 클릭 시: status를 'preparing' (제조 중)으로 변경
+   - '제조 완료' 버튼 클릭 시: status를 'completed' (제조 완료)로 변경
+   - 상태 변경 시 Orders 테이블의 status 필드를 업데이트하고 updated_at을 갱신
+
+5.2.4 재고 관리 흐름
+① 관리자 화면의 '재고 현황' 섹션에서 Menus 테이블의 stock 정보를 조회합니다.
+② 재고 증가/감소 버튼 클릭 시:
+   - Menus 테이블의 해당 메뉴의 stock 값을 증가 또는 감소
+   - 재고는 0 이하로 내려가지 않도록 제한
+   - 재고 변경 시 updated_at을 갱신
+
+5.3 API 설계
+
+5.3.1 메뉴 관련 API
+
+GET /api/menus
+- 설명: 모든 메뉴 목록 조회
+- 요청: 없음
+- 응답:
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": 1,
+        "name": "아메리카노(ICE)",
+        "description": "에스프레소에 물을 넣어 만든 시원한 아이스 커피",
+        "price": 4000,
+        "image": "https://images.unsplash.com/...",
+        "stock": 10,
+        "options": [
+          {
+            "id": 1,
+            "name": "샷 추가",
+            "price": 500,
+            "menu_id": 1
+          },
+          {
+            "id": 2,
+            "name": "시럽 추가",
+            "price": 0,
+            "menu_id": 1
+          }
+        ]
+      }
+    ]
+  }
+  ```
+- 에러 응답:
+  ```json
+  {
+    "success": false,
+    "error": "메뉴 조회 실패"
+  }
+  ```
+
+GET /api/menus/:id
+- 설명: 특정 메뉴 상세 정보 조회
+- 요청 파라미터:
+  - id: 메뉴 ID
+- 응답:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": 1,
+      "name": "아메리카노(ICE)",
+      "description": "에스프레소에 물을 넣어 만든 시원한 아이스 커피",
+      "price": 4000,
+      "image": "https://images.unsplash.com/...",
+      "stock": 10,
+      "options": [...]
+    }
+  }
+  ```
+
+PUT /api/menus/:id/stock
+- 설명: 메뉴 재고 수정 (관리자용)
+- 요청 파라미터:
+  - id: 메뉴 ID
+- 요청 본문:
+  ```json
+  {
+    "stock": 15
+  }
+  ```
+- 응답:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": 1,
+      "stock": 15
+    }
+  }
+  ```
+
+5.3.2 주문 관련 API
+
+POST /api/orders
+- 설명: 주문 생성
+- 요청 본문:
+  ```json
+  {
+    "items": [
+      {
+        "menu_id": 1,
+        "menu_name": "아메리카노(ICE)",
+        "quantity": 2,
+        "unit_price": 4000,
+        "options": {
+          "addShot": true,
+          "addSyrup": false
+        },
+        "item_total_price": 9000
+      }
+    ],
+    "total_price": 9000
+  }
+  ```
+- 응답:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": 1,
+      "order_date": "2024-01-15T10:30:00Z",
+      "status": "accepted",
+      "total_price": 9000,
+      "items": [...]
+    }
+  }
+  ```
+- 에러 응답 (재고 부족):
+  ```json
+  {
+    "success": false,
+    "error": "재고가 부족합니다",
+    "menu_id": 1,
+    "available_stock": 0
+  }
+  ```
+
+GET /api/orders
+- 설명: 모든 주문 목록 조회 (관리자용)
+- 쿼리 파라미터 (선택):
+  - status: 주문 상태로 필터링 (예: ?status=accepted)
+- 응답:
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": 1,
+        "order_date": "2024-01-15T10:30:00Z",
+        "status": "accepted",
+        "total_price": 9000,
+        "items": [
+          {
+            "id": 1,
+            "menu_id": 1,
+            "menu_name": "아메리카노(ICE)",
+            "quantity": 2,
+            "unit_price": 4000,
+            "options": {
+              "addShot": true,
+              "addSyrup": false
+            },
+            "item_total_price": 9000
+          }
+        ]
+      }
+    ]
+  }
+  ```
+
+GET /api/orders/:id
+- 설명: 주문 ID로 특정 주문 정보 조회
+- 요청 파라미터:
+  - id: 주문 ID
+- 응답:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": 1,
+      "order_date": "2024-01-15T10:30:00Z",
+      "status": "accepted",
+      "total_price": 9000,
+      "items": [...]
+    }
+  }
+  ```
+- 에러 응답:
+  ```json
+  {
+    "success": false,
+    "error": "주문을 찾을 수 없습니다"
+  }
+  ```
+
+PUT /api/orders/:id/status
+- 설명: 주문 상태 변경 (관리자용)
+- 요청 파라미터:
+  - id: 주문 ID
+- 요청 본문:
+  ```json
+  {
+    "status": "preparing"
+  }
+  ```
+- 응답:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": 1,
+      "status": "preparing",
+      "updated_at": "2024-01-15T10:35:00Z"
+    }
+  }
+  ```
+- 유효한 status 값: 'pending', 'accepted', 'preparing', 'completed'
+
+5.3.3 API 공통 사양
+
+응답 형식:
+- 성공 시: `{ "success": true, "data": ... }`
+- 실패 시: `{ "success": false, "error": "에러 메시지" }`
+
+HTTP 상태 코드:
+- 200: 성공
+- 201: 생성 성공 (POST)
+- 400: 잘못된 요청
+- 404: 리소스를 찾을 수 없음
+- 500: 서버 오류
+
+에러 처리:
+- 모든 API는 적절한 에러 메시지와 HTTP 상태 코드를 반환해야 합니다.
+- 데이터베이스 오류, 유효성 검사 실패 등에 대한 명확한 에러 메시지를 제공합니다.
+
+5.4 데이터베이스 스키마 예시
+
+```sql
+-- Menus 테이블
+CREATE TABLE menus (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  price INTEGER NOT NULL,
+  image VARCHAR(500),
+  stock INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Options 테이블
+CREATE TABLE options (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  price INTEGER NOT NULL DEFAULT 0,
+  menu_id INTEGER REFERENCES menus(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Orders 테이블
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  order_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status VARCHAR(50) NOT NULL DEFAULT 'accepted',
+  total_price INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- OrderItems 테이블
+CREATE TABLE order_items (
+  id SERIAL PRIMARY KEY,
+  order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+  menu_id INTEGER REFERENCES menus(id),
+  menu_name VARCHAR(255) NOT NULL,
+  quantity INTEGER NOT NULL,
+  unit_price INTEGER NOT NULL,
+  options JSONB,
+  item_total_price INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 인덱스 생성
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_order_date ON orders(order_date);
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_order_items_menu_id ON order_items(menu_id);
+CREATE INDEX idx_options_menu_id ON options(menu_id);
+```
+
+5.5 비즈니스 로직 규칙
+
+5.5.1 주문 생성 시 규칙
+- 주문 생성 시 주문된 메뉴의 재고를 즉시 차감합니다.
+- 재고가 부족한 경우 주문을 생성하지 않고 에러를 반환합니다.
+- 주문 상태는 기본적으로 'accepted' (주문 접수)로 설정됩니다.
+- 주문 일시는 서버 시간을 사용합니다.
+
+5.5.2 재고 관리 규칙
+- 재고는 0 이상의 값만 허용합니다.
+- 재고 감소 시 0 이하로 내려가지 않도록 제한합니다.
+- 관리자가 재고를 수동으로 조정할 수 있습니다.
+
+5.5.3 주문 상태 변경 규칙
+- 주문 상태는 다음 순서로만 변경 가능합니다:
+  - 'accepted' → 'preparing' → 'completed'
+- 상태 변경은 역순으로 되돌릴 수 없습니다 (예: 'completed' → 'preparing' 불가).
+- 주문 상태 변경 시 updated_at을 갱신합니다.
+
+5.5.4 데이터 무결성
+- OrderItems는 Orders와 함께 삭제됩니다 (CASCADE).
+- Options는 연결된 Menu가 삭제되면 함께 삭제됩니다 (CASCADE).
+- 주문 시점의 메뉴 정보(이름, 가격)는 OrderItems에 저장하여 메뉴 정보가 변경되어도 주문 내역은 유지됩니다.

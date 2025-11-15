@@ -53,7 +53,36 @@ DB_PASSWORD=your_password
 
 ### 3. 데이터베이스 설정
 
-PostgreSQL 데이터베이스를 생성하고, `docs/PRD.md`의 5.4 섹션에 있는 SQL 스키마를 실행하세요.
+**중요**: 먼저 PostgreSQL에서 데이터베이스를 생성해야 합니다!
+
+#### 3.1 데이터베이스 생성
+
+PostgreSQL에 접속하여 데이터베이스를 생성하세요:
+
+```bash
+# psql 사용
+psql -U postgres
+CREATE DATABASE coffee_order_db;
+\q
+```
+
+또는 pgAdmin을 사용하여 `coffee_order_db` 데이터베이스를 생성하세요.
+
+자세한 내용은 `DATABASE_SETUP.md` 파일을 참고하세요.
+
+#### 3.2 데이터베이스 연결 테스트
+
+```bash
+npm run db:test
+```
+
+#### 3.3 데이터베이스 초기화 (테이블 생성 및 초기 데이터 삽입)
+
+```bash
+npm run db:init
+```
+
+이 명령어는 모든 테이블을 생성하고 초기 데이터를 삽입합니다.
 
 ### 4. 서버 실행
 

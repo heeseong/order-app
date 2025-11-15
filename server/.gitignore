@@ -1,33 +1,88 @@
 # 의존성
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# package-lock.json은 버전 관리에 포함하는 것을 권장합니다
+# yarn.lock
 
-# 환경 변수
+# 환경 변수 (중요: 절대 커밋하지 마세요!)
 .env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
 .env.*.local
 
 # 로그 파일
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+logs/
+*.log.*
 
 # 운영 체제 파일
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
 
-# IDE 설정
+# IDE 및 에디터 설정
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
 
-# 빌드 파일
+# 빌드 및 배포 파일
 dist/
 build/
+out/
+.next/
+.nuxt/
+.cache/
+
+# 테스트 및 커버리지
+coverage/
+.nyc_output/
+*.lcov
+.jest/
+
+# 데이터베이스
+*.sql.backup
+*.db
+*.sqlite
+*.sqlite3
+dump.sql
 
 # 임시 파일
 *.tmp
 *.temp
+*.bak
+*.backup
+*.old
+
+# 캐시 파일
+.cache/
+.parcel-cache/
+.npm/
+.eslintcache
+.stylelintcache
+
+# 런타임 데이터
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# 디버그 파일
+.vscode-test/
+*.pdb
 

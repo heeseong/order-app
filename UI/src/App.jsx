@@ -47,8 +47,30 @@ const menuItems = [
   }
 ]
 
+// 주문 상태
+const ORDER_STATUS = {
+  PENDING: 'pending',      // 주문 접수 대기
+  ACCEPTED: 'accepted',    // 주문 접수
+  PREPARING: 'preparing',  // 제조 중
+  COMPLETED: 'completed'   // 제조 완료
+}
+
 function App() {
+  const [currentView, setCurrentView] = useState('order') // 'order' or 'admin'
   const [cart, setCart] = useState([])
+  
+  // 관리자 화면용 상태
+  const [inventory, setInventory] = useState({
+    1: 10, // 아메리카노(ICE)
+    2: 10, // 아메리카노(HOT)
+    3: 10, // 카페라떼
+    4: 10, // 카푸치노
+    5: 10, // 카라멜 마키아토
+    6: 10  // 바닐라 라떼
+  })
+  
+  const [orders, setOrders] = useState([])
+  const [orderIdCounter, setOrderIdCounter] = useState(1)
 
   // 옵션 추가 시 가격 계산
   const calculatePrice = (basePrice, options) => {
@@ -122,9 +144,89 @@ function App() {
       alert('장바구니가 비어있습니다.')
       return
     }
-    alert(`주문이 완료되었습니다!\n총 금액: ${calculateTotal().toLocaleString()}원`)
+    
+    // 주문 생성
+    const orderItems = cart.map(item => ({
+      menuId: item.menuId,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      options: item.options
+    }))
+    
+    const totalPrice = calculateTotal()
+    const now = new Date()
+    const orderDate = `${now.getMonth() + 1}월 ${now.getDate()}일 ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+    
+    const newOrder = {
+      id: orderIdCounter,
+      date: orderDate,
+      items: orderItems,
+      totalPrice: totalPrice,
+      status: ORDER_STATUS.ACCEPTED
+    }
+    
+    setOrders([...orders, newOrder])
+    setOrderIdCounter(orderIdCounter + 1)
     setCart([])
+    alert(`주문이 완료되었습니다!\n총 금액: ${totalPrice.toLocaleString()}원`)
   }
+
+  // 재고 증가
+  const increaseInventory = (menuId) => {
+    setInventory(prev => ({
+      ...prev,
+      [menuId]: prev[menuId] + 1
+    }))
+  }
+
+  // 재고 감소
+  const decreaseInventory = (menuId) => {
+    setInventory(prev => ({
+      ...prev,
+      [menuId]: Math.max(0, prev[menuId] - 1)
+    }))
+  }
+
+  // 재고 상태 확인
+  const getInventoryStatus = (quantity) => {
+    if (quantity === 0) return '품절'
+    if (quantity < 5) return '주의'
+    return '정상'
+  }
+
+  // 재고 상태 색상
+  const getInventoryStatusColor = (status) => {
+    if (status === '품절') return '#ef4444'
+    if (status === '주의') return '#f59e0b'
+    return '#10b981'
+  }
+
+  // 주문 상태 변경
+  const changeOrderStatus = (orderId, newStatus) => {
+    setOrders(prevOrders =>
+      prevOrders.map(order =>
+        order.id === orderId ? { ...order, status: newStatus } : order
+      )
+    )
+  }
+
+  // 대시보드 통계 계산
+  const getDashboardStats = () => {
+    const totalOrders = orders.length
+    const acceptedOrders = orders.filter(o => o.status === ORDER_STATUS.ACCEPTED).length
+    const preparingOrders = orders.filter(o => o.status === ORDER_STATUS.PREPARING).length
+    const completedOrders = orders.filter(o => o.status === ORDER_STATUS.COMPLETED).length
+    
+    return {
+      total: totalOrders,
+      accepted: acceptedOrders,
+      preparing: preparingOrders,
+      completed: completedOrders
+    }
+  }
+
+  const dashboardStats = getDashboardStats()
 
   return (
     <div className="app">
@@ -132,11 +234,52 @@ function App() {
       <header className="header">
         <div className="logo">COZY-Enjoy a flavour you have never experienced</div>
         <nav className="navigation">
-          <button className="nav-button active">주문하기</button>
-          <button className="nav-button">관리자</button>
+          <button 
+            className={`nav-button ${currentView === 'order' ? 'active' : ''}`}
+            onClick={() => setCurrentView('order')}
+          >
+            주문하기
+          </button>
+          <button 
+            className={`nav-button ${currentView === 'admin' ? 'active' : ''}`}
+            onClick={() => setCurrentView('admin')}
+          >
+            관리자
+          </button>
         </nav>
       </header>
 
+      {/* 화면 전환 */}
+      {currentView === 'order' ? (
+        <OrderView
+          menuItems={menuItems}
+          cart={cart}
+          addToCart={addToCart}
+          calculateTotal={calculateTotal}
+          handleOrder={handleOrder}
+        />
+      ) : (
+        <AdminView
+          menuItems={menuItems}
+          inventory={inventory}
+          increaseInventory={increaseInventory}
+          decreaseInventory={decreaseInventory}
+          getInventoryStatus={getInventoryStatus}
+          getInventoryStatusColor={getInventoryStatusColor}
+          orders={orders}
+          changeOrderStatus={changeOrderStatus}
+          dashboardStats={dashboardStats}
+          ORDER_STATUS={ORDER_STATUS}
+        />
+      )}
+    </div>
+  )
+}
+
+// 주문하기 화면
+function OrderView({ menuItems, cart, addToCart, calculateTotal, handleOrder }) {
+  return (
+    <>
       {/* 메뉴 아이템 영역 */}
       <main className="main-content">
         <div className="menu-grid">
@@ -185,6 +328,153 @@ function App() {
           </div>
         </div>
       </aside>
+    </>
+  )
+}
+
+// 관리자 화면
+function AdminView({
+  menuItems,
+  inventory,
+  increaseInventory,
+  decreaseInventory,
+  getInventoryStatus,
+  getInventoryStatusColor,
+  orders,
+  changeOrderStatus,
+  dashboardStats,
+  ORDER_STATUS
+}) {
+  // 주문 접수된 주문만 표시
+  const acceptedOrders = orders.filter(order => 
+    order.status === ORDER_STATUS.ACCEPTED || order.status === ORDER_STATUS.PREPARING
+  )
+
+  return (
+    <div className="admin-content">
+      {/* 관리자 대시보드 섹션 */}
+      <section className="dashboard-section">
+        <h2 className="section-title">관리자 대시보드</h2>
+        <div className="dashboard-stats">
+          <div className="stat-item">
+            <span className="stat-label">총 주문</span>
+            <span className="stat-value">{dashboardStats.total}</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">주문 접수</span>
+            <span className="stat-value">{dashboardStats.accepted}</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">제조 중</span>
+            <span className="stat-value">{dashboardStats.preparing}</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">제조 완료</span>
+            <span className="stat-value">{dashboardStats.completed}</span>
+          </div>
+        </div>
+      </section>
+
+      {/* 재고 현황 섹션 */}
+      <section className="inventory-section">
+        <h2 className="section-title">재고 현황</h2>
+        <div className="inventory-grid">
+          {menuItems.map((item) => {
+            const quantity = inventory[item.id]
+            const status = getInventoryStatus(quantity)
+            const statusColor = getInventoryStatusColor(status)
+            
+            return (
+              <div key={item.id} className="inventory-card">
+                <h3 className="inventory-item-name">{item.name}</h3>
+                <div className="inventory-quantity">
+                  <span className="quantity-number">{quantity}개</span>
+                  <span 
+                    className="quantity-status"
+                    style={{ color: statusColor }}
+                  >
+                    {status}
+                  </span>
+                </div>
+                <div className="inventory-controls">
+                  <button 
+                    className="inventory-button decrease"
+                    onClick={() => decreaseInventory(item.id)}
+                    disabled={quantity === 0}
+                  >
+                    -
+                  </button>
+                  <button 
+                    className="inventory-button increase"
+                    onClick={() => increaseInventory(item.id)}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* 주문 현황 섹션 */}
+      <section className="orders-section">
+        <h2 className="section-title">주문 현황</h2>
+        <div className="orders-list">
+          {acceptedOrders.length === 0 ? (
+            <p className="empty-orders">주문이 없습니다.</p>
+          ) : (
+            acceptedOrders.map((order) => (
+              <div key={order.id} className="order-card">
+                <div className="order-info">
+                  <div className="order-date">{order.date}</div>
+                  <div className="order-items">
+                    {order.items.map((item, index) => {
+                      const optionsText = []
+                      if (item.options.addShot) optionsText.push('샷 추가')
+                      if (item.options.addSyrup) optionsText.push('시럽 추가')
+                      const optionsDisplay = optionsText.length > 0 ? ` (${optionsText.join(', ')})` : ''
+                      
+                      return (
+                        <div key={index} className="order-item">
+                          {item.name}{optionsDisplay} X {item.quantity} - {item.price.toLocaleString()}원
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="order-total">총 금액: {order.totalPrice.toLocaleString()}원</div>
+                  <div className="order-status">
+                    상태: {
+                      order.status === ORDER_STATUS.ACCEPTED ? '주문 접수' :
+                      order.status === ORDER_STATUS.PREPARING ? '제조 중' :
+                      order.status === ORDER_STATUS.COMPLETED ? '제조 완료' :
+                      '대기 중'
+                    }
+                  </div>
+                </div>
+                <div className="order-actions">
+                  {order.status === ORDER_STATUS.ACCEPTED && (
+                    <button
+                      className="action-button prepare-button"
+                      onClick={() => changeOrderStatus(order.id, ORDER_STATUS.PREPARING)}
+                    >
+                      제조 시작
+                    </button>
+                  )}
+                  {order.status === ORDER_STATUS.PREPARING && (
+                    <button
+                      className="action-button complete-button"
+                      onClick={() => changeOrderStatus(order.id, ORDER_STATUS.COMPLETED)}
+                    >
+                      제조 완료
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
     </div>
   )
 }

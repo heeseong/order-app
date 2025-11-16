@@ -6,10 +6,16 @@ dotenv.config();
 const { Pool } = pg;
 
 // DATABASE_URL이 있으면 사용, 없으면 개별 환경 변수 사용
-const poolConfig = process.env.DATABASE_URL
+const usingDatabaseUrl = Boolean(process.env.DATABASE_URL);
+const shouldUseSsl =
+  process.env.DB_SSL === 'true' ||
+  process.env.PGSSLMODE === 'require' ||
+  process.env.NODE_ENV === 'production';
+
+const poolConfig = usingDatabaseUrl
   ? {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: shouldUseSsl ? { rejectUnauthorized: false } : false,
     }
   : {
       host: process.env.DB_HOST || 'localhost',
@@ -17,6 +23,7 @@ const poolConfig = process.env.DATABASE_URL
       database: process.env.DB_NAME || 'coffee_order_db',
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || '',
+      ssl: shouldUseSsl ? { rejectUnauthorized: false } : false,
     };
 
 // 데이터베이스 연결 풀 생성
